@@ -1,0 +1,62 @@
+image: maven:3.5.2-jdk-8-alpine
+
+options:
+  max-time: 60 #number greater than 0 and less than 120
+
+pipelines:
+  branches:
+    main:                      
+      - step:
+          name: Test/Build step 
+          caches:
+            - maven
+          script:
+            - mvn -B clean package
+            - mv /opt/atlassian/pipelines/agent/build/target/spring-boot-sample-actuator-1.2.5.jar .
+          artifacts:
+            - spring-boot-sample-actuator-1.2.5.jar
+          after-script:
+            - pipe: atlassian/checkstyle-report:0.3.0
+            - pipe: atlassian/bitbucket-upload-file:0.3.3
+              variables:
+                BITBUCKET_USERNAME: $BITBUCKET_USERNAME
+                BITBUCKET_APP_PASSWORD: $BITBUCKET_APP_PASSWORD
+                FILENAME: 'spring-boot-sample-actuator-1.2.5.jar'
+  
+      - step:
+          name: Build and publish docker image.
+          services:
+            - docker                         
+          script:
+            - export IMAGE_NAME="${DOCKERHUB_REPO}:${BITBUCKET_BUILD_NUMBER}"
+            - docker build -t $IMAGE_NAME .
+            # - docker login --username $DOCKER_USERNAME --password $DOCKER_PASSWORD
+            # - docker push $IMAGE_NAME
+            - docker save --output sample-app.tar $IMAGE_NAME
+          artifacts:
+            - sample-app.tar 
+      - step:
+          name: Deploy to staging
+          deployment: staging
+          script:
+            - echo "Deploying to staging environment"
+            # - pipe: atlassian/aws-s3-deploy:1.1.0
+            #   variables:
+            #     AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+            #     AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+            #     AWS_DEFAULT_REGION: 'us-east-1'
+            #     S3_BUCKET: 'application-bitbucket'
+            #     LOCAL_PATH: '$(pwd)'
+      - step:
+          name: Deploy to Production
+          deployment: production
+          trigger: manual
+          script:
+            - echo "Deploying to staging environment"
+            # - pipe: atlassian/aws-s3-deploy:1.1.0
+            #   variables:
+            #     AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+            #     AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+            #     AWS_DEFAULT_REGION: 'us-east-1'
+            #     S3_BUCKET: 'production-bitbucket-pipeline'
+            #     LOCAL_PATH: '$(pwd)'
